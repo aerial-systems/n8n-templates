@@ -1,0 +1,264 @@
+{
+  "name": "SaaS Metrics Dashboard",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "weeks", "weeksInterval": 1}]
+        }
+      },
+      "id": "sas-001",
+      "name": "Every Monday 8 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "resource": "subscriptions",
+        "options": {
+          "limit": 100
+        }
+      },
+      "id": "sas-002",
+      "name": "Fetch Active Subscriptions",
+      "type": "n8n-nodes-base.stripe",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "stripeApi": "REPLACE_WITH_YOUR_STRIPE_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "resource": "invoices",
+        "options": {
+          "limit": 100,
+          "additionalFields": {
+            "created": {
+              "gt": "={{ Math.floor(Date.now() / 1000) - 30 * 86400 }}"
+            }
+          }
+        }
+      },
+      "id": "sas-003",
+      "name": "Fetch Invoices (30 Days)",
+      "type": "n8n-nodes-base.stripe",
+      "typeVersion": 1,
+      "position": [450, 500],
+      "credentials": {
+        "stripeApi": "REPLACE_WITH_YOUR_STRIPE_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate MRR from active subscriptions\nconst subscriptions = $input.all();\n\nlet mrr = 0;\nlet activeCustomers = new Set();\nlet topAccounts = [];\nlet planBreakdown = {};\n\nsubscriptions.forEach(sub => {\n  const status = sub.json.status;\n  if (status !== 'active' && status !== 'trialing') return;\n  \n  const customerId = sub.json.customer;\n  activeCustomers.add(customerId);\n  \n  // Sum line items, normalize to monthly\n  let subMrr = 0;\n  const items = sub.json.items?.data || [];\n  items.forEach(item => {\n    const unitAmount = (item.price?.unit_amount || 0) / 100; // cents to dollars\n    const interval = item.price?.recurring?.interval || 'month';\n    const intervalCount = item.price?.recurring?.interval_count || 1;\n    const quantity = item.quantity || 1;\n    \n    // Normalize to monthly\n    let monthlyAmount = unitAmount * quantity;\n    if (interval === 'year') monthlyAmount = monthlyAmount / 12;\n    if (interval === 'week') monthlyAmount = monthlyAmount * 4.33;\n    monthlyAmount = monthlyAmount / intervalCount;\n    \n    subMrr += monthlyAmount;\n    \n    // Track plan breakdown\n    const planName = item.price?.nickname || item.price?.id || 'Unknown';\n    planBreakdown[planName] = (planBreakdown[planName] || 0) + monthlyAmount;\n  });\n  \n  mrr += subMrr;\n  topAccounts.push({\n    customer: customerId,\n    customerName: sub.json.customer_name || customerId,\n    mrr: subMrr\n  });\n});\n\n// Sort top accounts by MRR\ntopAccounts.sort((a, b) => b.mrr - a.mrr);\nconst top5 = topAccounts.slice(0, 5);\n\nreturn {\n  mrr: Math.round(mrr * 100) / 100,\n  activeCustomerCount: activeCustomers.size,\n  topAccounts: top5,\n  planBreakdown\n};"
+      },
+      "id": "sas-004",
+      "name": "Calculate MRR",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calculate churn from invoices (last 30 days vs previous 30 days)\nconst invoices = $input.all();\nconst now = Math.floor(Date.now() / 1000);\nconst thirtyDaysAgo = now - 30 * 86400;\nconst sixtyDaysAgo = now - 60 * 86400;\n\nlet newCustomers = new Set();\nlet churnedCustomers = new Set();\nlet totalRevenueThisPeriod = 0;\n\ninvoices.forEach(inv => {\n  const created = inv.json.created;\n  const customerId = inv.json.customer;\n  const amount = (inv.json.total || 0) / 100;\n  const status = inv.json.status;\n  \n  if (status !== 'paid') return;\n  \n  // Check if this customer's first invoice is in this period\n  if (created >= thirtyDaysAgo) {\n    totalRevenueThisPeriod += amount > 0 ? amount : 0;\n  }\n  \n  // Simple churn detection: look for canceled subscription metadata\n  // In practice, you'd cross-reference with subscription status changes\n  if (inv.json.metadata?.canceled === 'true' || inv.json.billing_reason === 'subscription_cycle' && amount === 0) {\n    if (created >= thirtyDaysAgo) {\n      churnedCustomers.add(customerId);\n    }\n  }\n});\n\n// For demo: estimate new customers as those with invoices only in this period\n// In production: query Stripe for subscriptions created in last 30 days\n\nreturn {\n  churnedCount: churnedCustomers.size,\n  churnRate: 0, // Calculated in merge step with MRR data\n  revenueThisPeriod: Math.round(totalRevenueThisPeriod * 100) / 100\n};"
+      },
+      "id": "sas-005",
+      "name": "Calculate Churn Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine MRR and churn data, calculate derived metrics\nconst mrrData = $('Calculate MRR').first().json;\nconst churnData = $input.first().json;\n\nconst activeCustomers = mrrData.activeCustomerCount;\nconst mrr = mrrData.mrr;\n\n// Calculate churn more accurately if we have the data\nconst churnedCount = churnData.churnedCount;\nconst churnRate = activeCustomers > 0 ? (churnedCount / (activeCustomers + churnedCount)) * 100 : 0;\n\nconst arpu = activeCustomers > 0 ? mrr / activeCustomers : 0;\nconst ltv = churnRate > 0 ? arpu / (churnRate / 100) : 0;\n\nconst today = new Date().toISOString().split('T')[0];\n\nreturn {\n  date: today,\n  mrr: Math.round(mrr * 100) / 100,\n  activeCustomers,\n  churnedCount,\n  churnRate: Math.round(churnRate * 100) / 100,\n  arpu: Math.round(arpu * 100) / 100,\n  ltv: Math.round(ltv * 100) / 100,\n  topAccounts: mrrData.topAccounts,\n  planBreakdown: mrrData.planBreakdown\n};"
+      },
+      "id": "sas-006",
+      "name": "Calculate LTV & ARPU",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format the metrics into a row for Google Sheets\nconst data = $input.first().json;\n\nreturn {\n  sheetRow: [\n    data.date,\n    data.mrr,\n    data.activeCustomers,\n    data.churnedCount,\n    data.churnRate,\n    data.arpu,\n    data.ltv,\n    data.topAccounts[0]?.customerName || '—',\n    data.topAccounts[1]?.customerName || '—',\n    data.topAccounts[2]?.customerName || '—'\n  ]\n};"
+      },
+      "id": "sas-007",
+      "name": "Format Dashboard Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "sheetId": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+        "range": "SaaS Metrics!A:J",
+        "options": {}
+      },
+      "id": "sas-008",
+      "name": "Append to Dashboard Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [1250, 400],
+      "credentials": {
+        "googleSheetsOAuth2Api": "REPLACE_WITH_YOUR_GOOGLE_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read previous week for comparison\nconst currentData = $('Calculate LTV & ARPU').first().json;\n\n// For delta calculation: read the previous row from Google Sheets\n// In production: use a Google Sheets Read node to get last week's data\nconst dashboardData = $input.first().json;\n\n// Simplified delta — in production, compare against previous row\nconst mrrTrend = '→'; // Placeholder: calculate actual delta\nconst customerTrend = '→';\nconst churnTrend = '→';\n\nreturn {\n  current: currentData,\n  trends: {\n    mrr: mrrTrend,\n    customers: customerTrend,\n    churn: churnTrend\n  }\n};"
+      },
+      "id": "sas-009",
+      "name": "Calculate Week-over-Week Delta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 600]
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "channel": "#metrics",
+        "text": "=📊 *Weekly SaaS Metrics*\n\n*MRR:* ${{ $json.current.mrr.toLocaleString() }} {{ $json.trends.mrr }}\n*Customers:* {{ $json.current.activeCustomers }} {{ $json.trends.customers }}\n*Churn Rate:* {{ $json.current.churnRate }}% {{ $json.trends.churn }}\n*ARPU:* ${{ $json.current.arpu.toLocaleString() }}\n*Est. LTV:* ${{ $json.current.ltv.toLocaleString() }}\n\n*Top Accounts by MRR:*\n1. {{ $json.current.topAccounts[0]?.customerName || '—' }} — ${{ ($json.current.topAccounts[0]?.mrr || 0).toLocaleString() }}\n2. {{ $json.current.topAccounts[1]?.customerName || '—' }} — ${{ ($json.current.topAccounts[1]?.mrr || 0).toLocaleString() }}\n3. {{ $json.current.topAccounts[2]?.customerName || '—' }} — ${{ ($json.current.topAccounts[2]?.mrr || 0).toLocaleString() }}\n\n📈 <link|View Dashboard>",
+        "otherOptions": {
+          "unfurlLinks": false
+        }
+      },
+      "id": "sas-010",
+      "name": "Slack Weekly Summary",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1450, 400],
+      "credentials": {
+        "slackApi": "REPLACE_WITH_YOUR_SLACK_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "high-churn",
+              "leftValue": "={{ $json.current.churnRate }}",
+              "rightValue": 5,
+              "operator": {"type": "number", "operation": "larger"}
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "sas-011",
+      "name": "Churn > 5% Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1650, 400]
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "channel": "#leadership",
+        "text": "=🚨 *ALERT: High Churn Detected*\n\nChurn rate is *{{ $json.current.churnRate }}%* this week (threshold: 5%).\n\nChurned customers: {{ $json.current.churnedCount }}\nActive customers: {{ $json.current.activeCustomers }}\n\nPlease review the dashboard and reach out to at-risk accounts."
+      },
+      "id": "sas-012",
+      "name": "Slack Alert (#leadership)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1850, 400],
+      "credentials": {
+        "slackApi": "REPLACE_WITH_YOUR_SLACK_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "=SaaS Metrics Report — Week of {{ $json.current.date }}",
+        "emailType": "html",
+        "message": "=<h2>Weekly SaaS Metrics</h2><table><tr><td><strong>MRR</strong></td><td>${{ $json.current.mrr.toLocaleString() }}</td></tr><tr><td><strong>Active Customers</strong></td><td>{{ $json.current.activeCustomers }}</td></tr><tr><td><strong>Churn Rate</strong></td><td>{{ $json.current.churnRate }}%</td></tr><tr><td><strong>ARPU</strong></td><td>${{ $json.current.arpu.toLocaleString() }}</td></tr><tr><td><strong>Est. LTV</strong></td><td>${{ $json.current.ltv.toLocaleString() }}</td></tr></table><p><a href='YOUR_DASHBOARD_LINK'>View full dashboard</a></p>",
+        "options": {}
+      },
+      "id": "sas-013",
+      "name": "Email Report (Optional)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2050, 400],
+      "disabled": true,
+      "credentials": {
+        "gmailOAuth2": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_NAME"
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday 8 AM": {
+      "main": [
+        [
+          {"node": "Fetch Active Subscriptions", "type": "main", "index": 0},
+          {"node": "Fetch Invoices (30 Days)", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Fetch Active Subscriptions": {
+      "main": [[{"node": "Calculate MRR", "type": "main", "index": 0}]]
+    },
+    "Fetch Invoices (30 Days)": {
+      "main": [[{"node": "Calculate Churn Data", "type": "main", "index": 0}]]
+    },
+    "Calculate Churn Data": {
+      "main": [[{"node": "Calculate LTV & ARPU", "type": "main", "index": 0}]]
+    },
+    "Calculate MRR": {
+      "main": [[{"node": "Calculate LTV & ARPU", "type": "main", "index": 0}]]
+    },
+    "Calculate LTV & ARPU": {
+      "main": [
+        [
+          {"node": "Format Dashboard Row", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Format Dashboard Row": {
+      "main": [[{"node": "Append to Dashboard Sheet", "type": "main", "index": 0}]]
+    },
+    "Append to Dashboard Sheet": {
+      "main": [[{"node": "Calculate Week-over-Week Delta", "type": "main", "index": 0}]]
+    },
+    "Calculate Week-over-Week Delta": {
+      "main": [[{"node": "Slack Weekly Summary", "type": "main", "index": 0}]]
+    },
+    "Slack Weekly Summary": {
+      "main": [[{"node": "Churn > 5% Alert?", "type": "main", "index": 0}]]
+    },
+    "Churn > 5% Alert?": {
+      "main": [
+        [{"node": "Slack Alert (#leadership)", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Slack Alert (#leadership)": {
+      "main": [[{"node": "Email Report (Optional)", "type": "main", "index": 0}]]
+    },
+    "Email Report (Optional)": {
+      "main": []
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {"name": "analytics"},
+    {"name": "saas"},
+    {"name": "stripe"},
+    {"name": "#template"}
+  ],
+  "pinData": {},
+  "versionId": "1.0.0"
+}

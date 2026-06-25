@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>n8n Workflow Templates — Ready-to-Use Automations</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600&family=Source+Code+Pro:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root { --navy: #061b31; --purple: #533afd; --slate: #64748d; --border: #e5edf5; --white: #fff; --bg: #f8fafc; --green: #15be53; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Source Sans 3', system-ui, sans-serif; font-weight: 300; color: var(--navy); background: var(--white); line-height: 1.4; }
+.container { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+nav { position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+nav .container { display: flex; align-items: center; justify-content: space-between; height: 56px; }
+.nav-logo { font-weight: 600; font-size: 18px; color: var(--navy); }
+.nav-logo span { color: var(--purple); }
+.hero { padding: 64px 0 40px; text-align: center; }
+.hero h1 { font-size: clamp(26px,4vw,40px); font-weight: 300; letter-spacing: -0.6px; margin-bottom: 12px; }
+.hero p { font-size: 17px; color: var(--slate); max-width: 600px; margin: 0 auto; }
+.badge { display: inline-block; font-size: 13px; font-weight: 400; color: var(--purple); background: rgba(83,58,253,0.06); padding: 3px 10px; border-radius: 4px; margin-bottom: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; padding: 0 0 80px; }
+.card { border: 1px solid var(--border); border-radius: 6px; padding: 28px; transition: box-shadow 0.2s, border-color 0.2s; background: var(--white); }
+.card:hover { border-color: #b9b9f9; box-shadow: rgba(50,50,93,0.25) 0px 30px 45px -30px, rgba(0,0,0,0.1) 0px 18px 36px -18px; }
+.card h2 { font-size: 20px; font-weight: 300; letter-spacing: -0.2px; margin-bottom: 8px; }
+.card .meta { font-size: 13px; color: var(--slate); margin-bottom: 10px; display: flex; gap: 16px; }
+.card .meta span { display: flex; align-items: center; gap: 4px; }
+.card .desc { font-size: 14px; color: var(--slate); line-height: 1.5; margin-bottom: 16px; }
+.card .price-row { display: flex; justify-content: space-between; align-items: center; }
+.card .price { font-size: 28px; font-weight: 300; color: var(--navy); }
+.card .price em { font-style: normal; font-size: 14px; color: var(--slate); }
+.card .btn { display: inline-block; background: var(--purple); color: var(--white); padding: 8px 18px; border-radius: 4px; font-size: 14px; font-weight: 400; text-decoration: none; transition: background 0.15s; }
+.card .btn:hover { background: #4434d4; }
+.cta { background: #1c1e54; padding: 64px 0; text-align: center; color: var(--white); margin-top: 40px; }
+.cta h2 { font-size: 28px; font-weight: 300; margin-bottom: 12px; }
+.cta p { font-size: 16px; color: rgba(255,255,255,0.7); margin-bottom: 24px; }
+.cta .btn { display: inline-block; background: var(--purple); color: var(--white); padding: 12px 28px; border-radius: 4px; font-size: 16px; text-decoration: none; }
+footer { border-top: 1px solid var(--border); padding: 32px 0; text-align: center; font-size: 13px; color: var(--slate); }
+footer a { color: var(--purple); text-decoration: none; }
+</style>
+</head>
+<body>
+<nav><div class="container"><div class="nav-logo">n8n<span>Templates</span></div><a href="#buy" class="btn">Get all 5 — $79</a></div></nav>
+
+<div class="hero container">
+  <div class="badge">5 production-ready workflows</div>
+  <h1>n8n templates that actually work</h1>
+  <p>Not the free community ones with broken webhooks. These are tested, documented, and ready to import. JSON exports with setup guides. 30-minute install time.</p>
+</div>
+
+<div class="grid container" id="buy">
+  <div class="card">
+    <h2>Lead Capture → CRM → Slack</h2>
+    <div class="meta"><span>7 nodes</span><span>30 min setup</span></div>
+    <div class="desc">Webhook form submission → Airtable or Google Sheets → Slack notification with lead details. Includes duplicate detection and source tracking.</div>
+    <div class="price-row"><div class="price">$19 <em>one-time</em></div><a href="01-lead-capture-crm-slack.md" class="btn">Preview</a></div>
+  </div>
+  <div class="card">
+    <h2>Invoice Generator from Sheets</h2>
+    <div class="meta"><span>9 nodes</span><span>45 min setup</span></div>
+    <div class="desc">Read Google Sheets rows → Generate PDF invoices with HTML template → Email to clients. Handles line items, tax calculations, and invoice numbering.</div>
+    <div class="price-row"><div class="price">$22 <em>one-time</em></div><a href="02-invoice-generator.md" class="btn">Preview</a></div>
+  </div>
+  <div class="card">
+    <h2>Social Media Cross-Poster</h2>
+    <div class="meta"><span>11 nodes</span><span>1 hr setup</span></div>
+    <div class="desc">RSS feed → Filter by keywords/categories → Format post → Cross-post to X, LinkedIn, and Telegram. Includes scheduling, retry logic, and post history log.</div>
+    <div class="price-row"><div class="price">$25 <em>one-time</em></div><a href="03-social-crossposter.md" class="btn">Preview</a></div>
+  </div>
+  <div class="card">
+    <h2>Customer Onboarding Automation</h2>
+    <div class="meta"><span>12 nodes</span><span>1 hr setup</span></div>
+    <div class="desc">New signup webhook → Create tasks in Notion → Send welcome email via Gmail → Schedule follow-up reminder. Includes conditional branching and template variables.</div>
+    <div class="price-row"><div class="price">$25 <em>one-time</em></div><a href="04-customer-onboarding.md" class="btn">Preview</a></div>
+  </div>
+  <div class="card">
+    <h2>SaaS Metrics Dashboard</h2>
+    <div class="meta"><span>14 nodes</span><span>1.5 hr setup</span></div>
+    <div class="desc">Pull Stripe API data → Calculate MRR, churn, LTV, ARPU → Update Google Sheets dashboard → Send weekly Slack summary. Real formulas, not approximations.</div>
+    <div class="price-row"><div class="price">$25 <em>one-time</em></div><a href="05-saas-metrics-dashboard.md" class="btn">Preview</a></div>
+  </div>
+</div>
+
+<div class="cta">
+  <div class="container">
+    <h2>Get all five for $79</h2>
+    <p>Save $37 vs buying individually. Includes all JSON exports, markdown guides, and free updates.</p>
+    <a href="https://github.com/aerial-systems/n8n-templates" class="btn">View on GitHub (free preview)</a>
+  </div>
+</div>
+
+<footer class="container"><p>n8nTemplates &copy; 2026 &middot; <a href="https://github.com/aerial-systems/n8n-templates">GitHub</a></p></footer>
+</body>
+</html>

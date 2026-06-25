@@ -1,0 +1,312 @@
+{
+  "name": "Customer Onboarding Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "customer-signup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "onb-001",
+      "name": "Webhook (New Signup)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "REPLACE_WITH_YOUR_WEBHOOK_ID"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-email",
+              "leftValue": "={{ $json.email }}",
+              "rightValue": "",
+              "operator": {"type": "string", "operation": "isNotEmpty"}
+            },
+            {
+              "id": "has-plan",
+              "leftValue": "={{ $json.plan }}",
+              "rightValue": "",
+              "operator": {"type": "string", "operation": "isNotEmpty"}
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "onb-002",
+      "name": "Validate Signup Data",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {"id": "s1", "name": "signup_date", "value": "={{ $now.toISOString() }}", "type": "string"},
+            {"id": "s2", "name": "status", "value": "Onboarding", "type": "string"},
+            {"id": "s3", "name": "onboarding_rep", "value": "={{ $json.onboarding_rep || 'team@yourcompany.com' }}", "type": "string"},
+            {"id": "s4", "name": "plan_display", "value": "={{ $json.plan }}", "type": "string"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "onb-003",
+      "name": "Format Customer Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "databaseId": "REPLACE_WITH_YOUR_CUSTOMERS_DATABASE_ID",
+        "propertiesUi": {
+          "parameter": [
+            {"key": "Name", "type": "title", "titleValue": "={{ $json.name }}"},
+            {"key": "Email", "type": "email", "emailValue": "={{ $json.email }}"},
+            {"key": "Company", "type": "richText", "richTextValue": "={{ $json.company || '' }}"},
+            {"key": "Plan", "type": "select", "selectValue": "={{ $json.plan }}"},
+            {"key": "Status", "type": "select", "selectValue": "={{ $json.status }}"},
+            {"key": "Onboarding Rep", "type": "richText", "richTextValue": "={{ $json.onboarding_rep }}"},
+            {"key": "Signup Date", "type": "date", "dateValue": "={{ $json.signup_date }}"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "onb-004",
+      "name": "Create Customer in Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "credentials": {
+        "notionApi": "REPLACE_WITH_YOUR_NOTION_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "databaseId": "REPLACE_WITH_YOUR_TASKS_DATABASE_ID",
+        "propertiesUi": {
+          "parameter": [
+            {"key": "Task Name", "type": "title", "titleValue": "=Send Welcome Kit - {{ $json.name }}"},
+            {"key": "Assigned To", "type": "people", "peopleValue": ["REPLACE_WITH_USER_ID"]},
+            {"key": "Customer", "type": "relation", "relationValue": ["={{ $('Create Customer in Notion').first().json.id }}"]},
+            {"key": "Due Date", "type": "date", "dateValue": "={{ new Date(Date.now() + 86400000).toISOString() }}"},
+            {"key": "Type", "type": "select", "selectValue": "Welcome Kit"},
+            {"key": "Status", "type": "select", "selectValue": "To Do"}
+          ]
+        },
+        "options": {}
+      },
+      "id": "onb-005",
+      "name": "Create Onboarding Tasks",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "credentials": {
+        "notionApi": "REPLACE_WITH_YOUR_NOTION_CREDENTIAL_NAME"
+      },
+      "notes": "Create 3 tasks per new customer. Duplicate this node for each task type (Welcome Kit, Kickoff Call, Account Setup) and change the title + type."
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "=Welcome to YOUR_COMPANY, {{ $json.name }}! 🎉",
+        "emailType": "html",
+        "message": "=<h2>Welcome aboard, {{ $json.name }}!</h2><p>Thanks for choosing <strong>YOUR_COMPANY</strong>. We're excited to have you on the {{ $json.plan }} plan.</p><h3>Next Steps:</h3><ol><li><strong>Book your kickoff call:</strong> <a href='YOUR_CALENDLY_LINK'>Schedule here</a></li><li><strong>Access your dashboard:</strong> <a href='https://app.yourcompany.com'>Login here</a></li><li><strong>Explore the docs:</strong> <a href='https://docs.yourcompany.com'>Documentation</a></li></ol><p>Your onboarding specialist <strong>{{ $json.onboarding_rep }}</strong> will reach out within 24 hours.</p><p>If you have questions, reply to this email or join our <a href='YOUR_SLACK_COMMUNITY_LINK'>Slack community</a>.</p><p>— The YOUR_COMPANY Team</p>",
+        "options": {}
+      },
+      "id": "onb-006",
+      "name": "Send Welcome Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [1250, 250],
+      "credentials": {
+        "gmailOAuth2": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "subscribe",
+        "audienceId": "REPLACE_WITH_YOUR_MAILCHIMP_AUDIENCE_ID",
+        "email": "={{ $json.email }}",
+        "mergeFields": {
+          "FNAME": "={{ $json.name.split(' ')[0] }}",
+          "LNAME": "={{ $json.name.split(' ').slice(1).join(' ') }}",
+          "PLAN": "={{ $json.plan }}",
+          "COMPANY": "={{ $json.company || '' }}"
+        },
+        "tags": ["Onboarding"],
+        "options": {
+          "status": "subscribed"
+        }
+      },
+      "id": "onb-007",
+      "name": "Add to Mailchimp",
+      "type": "n8n-nodes-base.mailchimp",
+      "typeVersion": 1.1,
+      "position": [1250, 450],
+      "credentials": {
+        "mailchimpApi": "REPLACE_WITH_YOUR_MAILCHIMP_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "calendar": "primary",
+        "summary": "=Day 3 Check-in: {{ $json.name }} ({{ $json.company || 'No company' }})",
+        "description": "=Check in with {{ $json.name }} about their onboarding progress.\n\nPlan: {{ $json.plan }}\nEmail: {{ $json.email }}\n\nQuestions to ask:\n1. Have you completed the setup guide?\n2. Any blockers or questions?\n3. Would you like a live walkthrough?",
+        "start": "={{ new Date(Date.now() + 3 * 86400000).toISOString() }}",
+        "end": "={{ new Date(Date.now() + 3 * 86400000 + 1800000).toISOString() }}",
+        "options": {
+          "attendees": ["={{ $json.onboarding_rep }}"]
+        }
+      },
+      "id": "onb-008",
+      "name": "Schedule Day 3 Check-in",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.2,
+      "position": [1450, 300],
+      "credentials": {
+        "googleCalendarOAuth2Api": "REPLACE_WITH_YOUR_GOOGLE_CALENDAR_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "accessToken",
+        "channel": "#customer-success",
+        "text": "=🎉 *New Signup!*\n\n*Customer:* {{ $json.name }}\n*Company:* {{ $json.company || 'N/A' }}\n*Plan:* {{ $json.plan }}\n*Email:* {{ $json.email }}\n\nNotion: <link|Open in Notion>\n\n✅ Welcome email sent\n✅ Mailchimp added\n✅ Tasks created\n📅 Check-in: 3 days"
+      },
+      "id": "onb-009",
+      "name": "Notify #customer-success",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [1650, 300],
+      "credentials": {
+        "slackApi": "REPLACE_WITH_YOUR_SLACK_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "amount": 72,
+        "unit": "hours"
+      },
+      "id": "onb-010",
+      "name": "Wait 3 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "=How's it going, {{ $json.name }}?",
+        "emailType": "html",
+        "message": "=<p>Hi {{ $json.name }},</p><p>Just checking in — you've been on the {{ $json.plan }} plan for 3 days now. How's everything going?</p><p><strong>Quick questions:</strong></p><ul><li>Were you able to complete the setup?</li><li>Any features you'd like help with?</li><li>Anything we can improve?</li></ul><p>Reply to this email or <a href='YOUR_CALENDLY_LINK'>book a quick call</a> if you'd like a walkthrough.</p><p>Best,<br>YOUR_COMPANY Team</p>",
+        "options": {}
+      },
+      "id": "onb-011",
+      "name": "Send Day 3 Follow-up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [2050, 300],
+      "credentials": {
+        "gmailOAuth2": "REPLACE_WITH_YOUR_GMAIL_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\":true,\"message\":\"Onboarding sequence initiated\",\"customer\":{\"name\":\"{{ $json.name }}\",\"plan\":\"{{ $json.plan }}\"}}"
+      },
+      "id": "onb-012",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2250, 300]
+    },
+    {
+      "parameters": {
+        "httpStatusCode": 400,
+        "respondWith": "json",
+        "responseBody": "={\"error\":\"Missing required fields: email and plan\"}"
+      },
+      "id": "onb-013",
+      "name": "Return 400 Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [650, 500]
+    }
+  ],
+  "connections": {
+    "Webhook (New Signup)": {
+      "main": [[{"node": "Validate Signup Data", "type": "main", "index": 0}]]
+    },
+    "Validate Signup Data": {
+      "main": [
+        [{"node": "Format Customer Data", "type": "main", "index": 0}],
+        [{"node": "Return 400 Error", "type": "main", "index": 0}]
+      ]
+    },
+    "Format Customer Data": {
+      "main": [[{"node": "Create Customer in Notion", "type": "main", "index": 0}]]
+    },
+    "Create Customer in Notion": {
+      "main": [
+        [
+          {"node": "Create Onboarding Tasks", "type": "main", "index": 0},
+          {"node": "Send Welcome Email", "type": "main", "index": 0},
+          {"node": "Add to Mailchimp", "type": "main", "index": 0}
+        ]
+      ]
+    },
+    "Create Onboarding Tasks": {
+      "main": [[{"node": "Schedule Day 3 Check-in", "type": "main", "index": 0}]]
+    },
+    "Send Welcome Email": {
+      "main": [[{"node": "Schedule Day 3 Check-in", "type": "main", "index": 0}]]
+    },
+    "Add to Mailchimp": {
+      "main": [[{"node": "Schedule Day 3 Check-in", "type": "main", "index": 0}]]
+    },
+    "Schedule Day 3 Check-in": {
+      "main": [[{"node": "Notify #customer-success", "type": "main", "index": 0}]]
+    },
+    "Notify #customer-success": {
+      "main": [[{"node": "Wait 3 Days", "type": "main", "index": 0}]]
+    },
+    "Wait 3 Days": {
+      "main": [[{"node": "Send Day 3 Follow-up", "type": "main", "index": 0}]]
+    },
+    "Send Day 3 Follow-up": {
+      "main": [[{"node": "Respond 200 OK", "type": "main", "index": 0}]]
+    },
+    "Respond 200 OK": {
+      "main": []
+    },
+    "Return 400 Error": {
+      "main": []
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {"name": "operations"},
+    {"name": "onboarding"},
+    {"name": "customer-success"},
+    {"name": "#template"}
+  ],
+  "pinData": {},
+  "versionId": "1.0.0"
+}

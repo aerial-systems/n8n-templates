@@ -1,0 +1,206 @@
+{
+  "name": "Invoice Generator from Google Sheets",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{"field": "hours", "hoursInterval": 24}]
+        }
+      },
+      "id": "inv-001",
+      "name": "Daily Trigger (9 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetId": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+        "range": "Invoices!A:J",
+        "options": {}
+      },
+      "id": "inv-002",
+      "name": "Read Invoice Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [450, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": "REPLACE_WITH_YOUR_GOOGLE_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "filter-unbilled",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "unbilled",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        }
+      },
+      "id": "inv-003",
+      "name": "Filter: Status = Unbilled",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "inv-004",
+      "name": "Group by Client Email",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "notes": "Splits items into groups by client_email field. Each output branch = one client invoice."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Grouped items from Item Lists node\nconst items = $input.all();\nconst today = new Date().toISOString().split('T')[0];\n\n// Build invoice data for this client group\nconst clientName = items[0].json.client_name;\nconst clientEmail = items[0].json.client_email;\n\nlet subtotal = 0;\nconst lineItems = items.map((item, i) => {\n  const qty = parseFloat(item.json.quantity) || 0;\n  const rate = parseFloat(item.json.rate) || 0;\n  const amount = qty * rate;\n  subtotal += amount;\n  return {\n    description: item.json.description,\n    quantity: qty,\n    rate: rate.toFixed(2),\n    amount: amount.toFixed(2)\n  };\n});\n\nconst taxRate = 0; // Change to e.g. 0.21 for 21% VAT\nconst tax = subtotal * taxRate;\nconst total = subtotal + tax;\n\nconst invoiceNumber = `INV-${today.replace(/-/g, '')}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;\nconst dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];\n\nreturn {\n  clientName,\n  clientEmail,\n  invoiceNumber,\n  invoiceDate: today,\n  dueDate,\n  lineItems,\n  subtotal: subtotal.toFixed(2),\n  tax: tax.toFixed(2),\n  total: total.toFixed(2),\n  originalRowIndices: items.map(i => i.json.rowIndex)\n};"
+      },
+      "id": "inv-005",
+      "name": "Calculate Invoice Totals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "html": "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <style>\n    * { box-sizing: border-box; margin: 0; padding: 0; }\n    body { font-family: 'Inter', -apple-system, sans-serif; color: #1a1a1a; font-size: 12px; line-height: 1.5; }\n    .header { display: flex; justify-content: space-between; margin-bottom: 40px; }\n    .logo { width: 120px; }\n    .company-info { text-align: right; font-size: 11px; color: #666; }\n    .invoice-title { font-size: 28px; font-weight: 700; color: #2563eb; margin-bottom: 20px; letter-spacing: 2px; }\n    .meta { display: flex; justify-content: space-between; margin-bottom: 30px; }\n    .meta-box { font-size: 11px; }\n    .meta-box strong { display: block; font-size: 9px; text-transform: uppercase; color: #999; letter-spacing: 1px; margin-bottom: 3px; }\n    table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }\n    th { background: #f8fafc; text-align: left; padding: 10px 8px; font-size: 9px; text-transform: uppercase; color: #666; letter-spacing: 1px; border-bottom: 2px solid #e2e8f0; }\n    td { padding: 10px 8px; border-bottom: 1px solid #f1f5f9; font-size: 11px; }\n    td.right { text-align: right; }\n    .totals { margin-left: auto; width: 280px; }\n    .totals .row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 11px; border-bottom: 1px solid #f1f5f9; }\n    .totals .row.total { font-weight: 700; font-size: 14px; border-top: 2px solid #1a1a1a; border-bottom: none; padding-top: 10px; margin-top: 5px; }\n    .footer { margin-top: 50px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #999; }\n    .footer .payment { font-size: 11px; color: #444; margin-bottom: 8px; }\n  </style>\n</head>\n<body>\n  <div class=\"header\">\n    <img class=\"logo\" src=\"YOUR_LOGO_URL\" alt=\"Company Logo\">\n    <div class=\"company-info\">\n      YOUR_COMPANY_NAME<br>\n      YOUR_ADDRESS_LINE_1<br>\n      YOUR_CITY, STATE ZIP<br>\n      YOUR_EMAIL\n    </div>\n  </div>\n\n  <div class=\"invoice-title\">INVOICE</div>\n\n  <div class=\"meta\">\n    <div class=\"meta-box\">\n      <strong>Bill To</strong>\n      {{ $json.clientName }}<br>\n      {{ $json.clientEmail }}\n    </div>\n    <div class=\"meta-box\" style=\"text-align:right;\">\n      <strong>Invoice Number</strong>\n      {{ $json.invoiceNumber }}<br><br>\n      <strong>Date</strong>\n      {{ $json.invoiceDate }}<br><br>\n      <strong>Due Date</strong>\n      {{ $json.dueDate }}\n    </div>\n  </div>\n\n  <table>\n    <thead>\n      <tr>\n        <th style=\"width:50%;\">Description</th>\n        <th style=\"width:12%;\" class=\"right\">Qty</th>\n        <th style=\"width:18%;\" class=\"right\">Rate</th>\n        <th style=\"width:20%;\" class=\"right\">Amount</th>\n      </tr>\n    </thead>\n    <tbody>\n      {{ $json.lineItems.map(item => `\n        <tr>\n          <td>${item.description}</td>\n          <td class=\"right\">${item.quantity}</td>\n          <td class=\"right\">$${item.rate}</td>\n          <td class=\"right\">$${item.amount}</td>\n        </tr>\n      `).join('') }}\n    </tbody>\n  </table>\n\n  <div class=\"totals\">\n    <div class=\"row\"><span>Subtotal</span><span>${{ $json.subtotal }}</span></div>\n    <div class=\"row\"><span>Tax (0%)</span><span>${{ $json.tax }}</span></div>\n    <div class=\"row total\"><span>Total Due</span><span>${{ $json.total }}</span></div>\n  </div>\n\n  <div class=\"footer\">\n    <div class=\"payment\"><strong>Payment Terms:</strong> Net 30 — Please include invoice number with payment.</div>\n    <div class=\"payment\"><strong>Bank Transfer:</strong> YOUR_BANK_NAME | Account: YOUR_ACCOUNT | Routing: YOUR_ROUTING</div>\n    <div>Thank you for your business!</div>\n  </div>\n</body>\n</html>"
+      },
+      "id": "inv-006",
+      "name": "Render Invoice HTML",
+      "type": "n8n-nodes-base.html",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "dataPropertyName": "data",
+        "options": {}
+      },
+      "id": "inv-007",
+      "name": "Move Binary Data",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [1450, 300],
+      "notes": "Extracts the HTML output as binary data for PDF conversion"
+    },
+    {
+      "parameters": {
+        "operation": "toPdf",
+        "options": {
+          "pageSize": "A4",
+          "marginTop": "15mm",
+          "marginBottom": "15mm",
+          "marginLeft": "15mm",
+          "marginRight": "15mm",
+          "headerTemplate": "<div></div>",
+          "footerTemplate": "<div style='font-size:8px;text-align:center;width:100%;color:#999;'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></div>"
+        }
+      },
+      "id": "inv-008",
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "send",
+        "subject": "=Invoice {{ $json.invoiceNumber }} from YOUR_COMPANY_NAME",
+        "emailType": "html",
+        "message": "=<p>Hi {{ $json.clientName }},</p><p>Please find attached invoice <strong>{{ $json.invoiceNumber }}</strong> for services rendered.</p><p><strong>Amount Due:</strong> ${{ $json.total }}<br><strong>Due Date:</strong> {{ $json.dueDate }}</p><p>Thank you for your business!</p><p>— YOUR_COMPANY_NAME</p>",
+        "options": {
+          "attachments": ["data"]
+        }
+      },
+      "id": "inv-009",
+      "name": "Email Invoice to Client",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1850, 300],
+      "credentials": {
+        "smtp": "REPLACE_WITH_YOUR_SMTP_CREDENTIAL_NAME"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "sheetId": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+        "range": "=Invoices!F{{ $json.originalRowIndices[0] + 1 }}:I{{ $json.originalRowIndices[$json.originalRowIndices.length - 1] + 1 }}",
+        "options": {}
+      },
+      "id": "inv-010",
+      "name": "Mark as Invoiced",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.2,
+      "position": [2050, 300],
+      "notes": "Updates status to 'invoiced' and fills invoice number + date",
+      "credentials": {
+        "googleSheetsOAuth2Api": "REPLACE_WITH_YOUR_GOOGLE_CREDENTIAL_NAME"
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger (9 AM)": {
+      "main": [[{"node": "Read Invoice Sheet", "type": "main", "index": 0}]]
+    },
+    "Read Invoice Sheet": {
+      "main": [[{"node": "Filter: Status = Unbilled", "type": "main", "index": 0}]]
+    },
+    "Filter: Status = Unbilled": {
+      "main": [
+        [{"node": "Group by Client Email", "type": "main", "index": 0}],
+        []
+      ]
+    },
+    "Group by Client Email": {
+      "main": [[{"node": "Calculate Invoice Totals", "type": "main", "index": 0}]]
+    },
+    "Calculate Invoice Totals": {
+      "main": [[{"node": "Render Invoice HTML", "type": "main", "index": 0}]]
+    },
+    "Render Invoice HTML": {
+      "main": [[{"node": "Move Binary Data", "type": "main", "index": 0}]]
+    },
+    "Move Binary Data": {
+      "main": [[{"node": "Convert to PDF", "type": "main", "index": 0}]]
+    },
+    "Convert to PDF": {
+      "main": [[{"node": "Email Invoice to Client", "type": "main", "index": 0}]]
+    },
+    "Email Invoice to Client": {
+      "main": [[{"node": "Mark as Invoiced", "type": "main", "index": 0}]]
+    },
+    "Mark as Invoiced": {
+      "main": []
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "staticData": null,
+  "tags": [
+    {"name": "finance"},
+    {"name": "invoicing"},
+    {"name": "#template"}
+  ],
+  "pinData": {},
+  "versionId": "1.0.0"
+}
